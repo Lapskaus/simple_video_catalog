@@ -37,6 +37,15 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// Контроллер камеры имеет задержку на запуск записи, но не не имеет такого статуса, поэтому
+// был добавлен RecordingState, который имеет дополнительный вариант RecordingState.initializing
+// для отображения соответствующего состояния пользователю
+enum RecordingState {
+  stopped,
+  initializing,
+  recording
+}
+
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key key, this.title}) : super(key: key);
 
@@ -62,12 +71,14 @@ class _MyHomePageState extends State<MyHomePage> {
   List<VideoFile> _videosList = [];
   CameraController _controller;
   String _currentRecordingPath;
+  RecordingState _recordingState;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
+    _recordingState = RecordingState.stopped;
     _controller = CameraController(cameras[0], ResolutionPreset.medium);
     _controller.initialize().then((_) {
       if (!mounted) {
@@ -132,27 +143,34 @@ class _MyHomePageState extends State<MyHomePage> {
       });
   }
 
+  // Обновления от контроллера камеры. Оборачиваем в наше состояние RecordingState
   void _cameraStateChanged() {
-    setState(() {});
+    setState(() {
+      _recordingState = _controller.value.isRecordingVideo ? RecordingState.recording : RecordingState.stopped;
+    });
   }
 
   // В зависимости от того снимается ли видео или нет - возвращает 'запуск' или 'стоп'
-  Widget _controlButtons() {
-    return !_controller.value.isRecordingVideo ?
-    CupertinoButton(
-      child: Text('◉', style: TextStyle(fontSize: 80, color: Colors.red),),
-      onPressed: () {
-        // TODO После нажатия на 'Старт', визуально кажется, что ничего не просходит, хотя идет инициализация записи. 
-        // Нужно сделать дополнительный статус на уровне этого виджета и отображать loading activity допустим.
-        onVideoRecordButtonPressed();
-      },
-    ) :
-    CupertinoButton(
-      child: Text('✋🏻', style: TextStyle(fontSize: 80)),
-      onPressed: () {
-        onStopButtonPressed();
-      },
-    );
+  Widget _controlButton() {
+    switch (_recordingState) {
+      case RecordingState.initializing:
+        return CupertinoActivityIndicator(animating: true,);
+      case RecordingState.stopped:
+        return CupertinoButton(
+          child: Text('◉', style: TextStyle(fontSize: 80, color: Colors.red),),
+          onPressed: () {
+            onVideoRecordButtonPressed();
+          },
+        );
+      case RecordingState.recording:
+        return CupertinoButton(
+          child: Text('✋🏻', style: TextStyle(fontSize: 80)),
+          onPressed: () {
+            onStopButtonPressed();
+          },
+        );
+    }
+    return null;
   }
    
   // Display the preview from the camera (or a message if the preview is not available).
@@ -185,6 +203,9 @@ class _MyHomePageState extends State<MyHomePage> {
       if (mounted) setState(() {});
       if (filePath != null) _showInSnackBar('Saving video to $filePath');
       _updateVideoCatalogInfo();
+    });
+    setState(() {
+      _recordingState = RecordingState.initializing;
     });
   }
 
@@ -275,7 +296,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   mainAxisSize: MainAxisSize.max,
                   children: <Widget>[
                     _cameraPreviewWidget(),
-                    _controlButtons()
+                    Container(
+                      width: 120,
+                      height: 120,
+                      child: _controlButton()
+                    )
                   ],
                 ),
               ),
